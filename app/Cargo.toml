@@ -507,6 +507,7 @@ factory_mcp = []
 preview_urls_mcp = []
 default = [
     "agent_mode",
+    "drag_tabs_to_windows",
     "osc_hyperlinks",
     "viewing_shared_sessions",
     "render_continuous_block_selections_with_single_border",
