@@ -1,0 +1,60 @@
+name: Build WarpOss for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [enable-linux-tab-detachment]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-oss-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      CARGO_BIN_NAME: oss
+      WARP_APP_NAME: WarpOss
+      WARP_SKIP_COMMON_SKILLS_INSTALL: '1'
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: ./.github/actions/prepare_environment
+        with:
+          target_os: windows
+          is_self_hosted: false
+          install_release_deps: true
+
+      - name: Build WarpOss
+        shell: pwsh
+        run: |
+          cargo build --locked -p warp --bin warp-oss --features gui,drag_tabs_to_windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package executable and runtime files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $PWD 'dist\warp-oss-windows-x64'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item 'target\debug\warp-oss.exe' $package
+          Copy-Item 'LICENSE-AGPL', 'LICENSE-MIT' $package
+          Copy-Item 'app\assets\windows\x64\*.dll' $package
+          New-Item -ItemType Directory -Path "$package\x64" -Force | Out-Null
+          Copy-Item 'app\assets\windows\x64\OpenConsole.exe' "$package\x64"
+          $env:SETTINGS_SCHEMA_EXECUTABLE = Join-Path $package 'warp-oss.exe'
+          & .\script\windows\prepare_bundled_resources.ps1 -DestinationDir "$package\resources" -Channel oss
+          if (-not $?) { throw 'Failed to prepare bundled resources' }
+          Set-Content -Path "$package\BUILD_SOURCE.txt" -Value 'https://github.com/${{ github.repository }}/tree/${{ github.sha }}'
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: warp-oss-windows-x64
+          path: dist/warp-oss-windows-x64/
+          if-no-files-found: error
+          retention-days: 14
